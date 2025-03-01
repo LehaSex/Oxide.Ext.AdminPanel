@@ -1,0 +1,72 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <Platforms>AnyCPU;x64;x86</Platforms>
+    <AssemblyName>Oxide.Ext.AdminPanel</AssemblyName>
+	<LangVersion>9</LangVersion>
+	<AssemblyVersion>1.0.0.0</AssemblyVersion>
+	<FileVersion>1.0.0.0</FileVersion>
+	<Version>1.0.0</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Remove="Resources\scripts.js" />
+    <None Remove="Resources\styles.css" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Resources\scripts.js">
+      <Generator></Generator>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Resources\styles.css" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="Assembly-CSharp">
+      <HintPath>..\Dependencies\Assembly-CSharp.dll</HintPath>
+    </Reference>
+    <Reference Include="Facepunch.UnityEngine">
+      <HintPath>..\Dependencies\Facepunch.UnityEngine.dll</HintPath>
+    </Reference>
+    <Reference Include="Oxide.Core">
+      <HintPath>..\Dependencies\Oxide.Core.dll</HintPath>
+    </Reference>
+    <Reference Include="Oxide.CSharp">
+      <HintPath>..\Dependencies\Oxide.CSharp.dll</HintPath>
+    </Reference>
+    <Reference Include="Oxide.References">
+      <HintPath>..\Dependencies\Oxide.References.dll</HintPath>
+    </Reference>
+    <Reference Include="Oxide.Rust">
+      <HintPath>..\Dependencies\Oxide.Rust.dll</HintPath>
+    </Reference>
+    <Reference Include="Oxide.Unity">
+      <HintPath>..\Dependencies\Oxide.Unity.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>..\Dependencies\UnityEngine.CoreModule.dll</HintPath>
+    </Reference>    
+	<Reference Include="System">
+      <HintPath>..\Dependencies\System.dll</HintPath>
+    </Reference>	
+	<Reference Include="System.Core">
+      <HintPath>..\Dependencies\System.Core.dll</HintPath>
+    </Reference>	
+	<Reference Include="System.Core">
+      <HintPath>..\Dependencies\System.Net.Http.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="tests\" />
+  </ItemGroup>
+
+    <PropertyGroup>
+	    <ImplicitUsings>disable</ImplicitUsings>
+	    <RootNamespace>Oxide.Ext.AdminPanel</RootNamespace>
+    </PropertyGroup>
+
+</Project>

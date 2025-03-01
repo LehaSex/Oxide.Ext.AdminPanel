@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [ "master", "develop" ]
+  pull_request:
+    branches: [ "master", "develop" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+
+      - name: Set VERSION variable from latest release
+        shell: pwsh
+        run: |
+          $env:VERSION = gh release list --limit 1 --json tagName --jq '.[0].tagName'
+          if ([string]::IsNullOrEmpty($env:VERSION)) {
+            Write-Error "Error: VERSION is empty."
+            exit 1
+          }
+
+          $versionPattern = '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z\-\.]+)?(\+[0-9A-Za-z\-\.]+)?$'
+          if ($env:VERSION -notmatch $versionPattern) {
+            Write-Error "Error: VERSION is not a valid Semantic Version (https://semver.org)."
+            exit 1
+          } else {
+            Write-Host "VERSION: $env:VERSION"
+            echo "VERSION=$env:VERSION" >> $env:GITHUB_ENV
+          }
+        env:
+          GITHUB_REF: ${{ github.ref }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download References
+        shell: pwsh
+        run: .\Download-References.ps1
+
+      - name: Build DLL (Oxide)
+        run: dotnet build Oxide.Ext.Discord.csproj -c Release /p:Platform=Oxide /p:Version=$env:VERSION /p:BuildServer=Github -f net48
+        working-directory: Oxide.Ext.Discord
