@@ -7,14 +7,14 @@ namespace Oxide.Ext.AdminPanel
     public class DependencyContainer : IDependencyContainer
     {
         private readonly Dictionary<Type, Type> _registrations = new Dictionary<Type, Type>();
-        private readonly Dictionary<Type, Func<object>> _factories = new Dictionary<Type, Func<object>>(); // Для хранения фабрик
+        private readonly Dictionary<Type, Func<object>> _factories = new Dictionary<Type, Func<object>>(); // factory storage
 
         public void Register<TService, TImplementation>() where TImplementation : TService
         {
             _registrations[typeof(TService)] = typeof(TImplementation);
         }
 
-        public void Register<TService>(Func<TService> factory) // Реализация метода для регистрации фабрики
+        public void Register<TService>(Func<TService> factory) // implement method for register factory
         {
             if (factory == null)
             {
@@ -36,13 +36,13 @@ namespace Oxide.Ext.AdminPanel
         {
             var serviceType = typeof(TService);
 
-            // Проверяем, есть ли фабрика для этого типа
+            // check exists factory of this type
             if (_factories.TryGetValue(serviceType, out var factory))
             {
                 return (TService)factory();
             }
 
-            // Если фабрики нет, используем стандартную регистрацию
+            // if not exists standart registration
             return (TService)Resolve(serviceType);
         }
 

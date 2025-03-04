@@ -13,11 +13,13 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <None Remove="Resources\index.html" />
     <None Remove="Resources\scripts.js" />
     <None Remove="Resources\styles.css" />
   </ItemGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="Resources\index.html" />
     <EmbeddedResource Include="Resources\scripts.js">
       <Generator></Generator>
     </EmbeddedResource>

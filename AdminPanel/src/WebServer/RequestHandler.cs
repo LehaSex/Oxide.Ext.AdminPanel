@@ -30,13 +30,13 @@ namespace Oxide.Ext.AdminPanel
             _routes = new Dictionary<string, Func<HttpListenerContext, Task>>();
             _container = container ?? throw new ArgumentNullException(nameof(container));
 
-            // Регистрируем маршруты
+            // registring routes
             RegisterRoutes();
         }
 
         private void RegisterRoutes()
         {
-            // Разрешаем контроллеры через DI-контейнер
+            // allow controllers from DI-container
             var authController = _container.Resolve<AuthController>();
             var mainController = _container.Resolve<MainPanelController>();
 
@@ -48,12 +48,12 @@ namespace Oxide.Ext.AdminPanel
         {
             Func<Task> next = () => handler(context);
 
-            // Создаем и выполняем middleware в обратном порядке
+            // Creating and executing middleware in reverse order
             for (int i = middlewareTypes.Length - 1; i >= 0; i--)
             {
                 var middleware = _container.Resolve(middlewareTypes[i]) as IMiddleware;
 
-                // Пропускаем middleware, если его не удалось создать
+                // Skipping middleware if it could not be created
                 if (middleware == null)
                 {
                     var logger = _container.Resolve<ILogger>();
@@ -77,7 +77,7 @@ namespace Oxide.Ext.AdminPanel
 
             try
             {
-                // Обработка статических файлов (CSS, JS)
+                // static files processing
                 if (request.Url.AbsolutePath.StartsWith("/adminpanel/css/", StringComparison.OrdinalIgnoreCase) ||
                     request.Url.AbsolutePath.StartsWith("/adminpanel/js/", StringComparison.OrdinalIgnoreCase))
                 {
@@ -85,14 +85,14 @@ namespace Oxide.Ext.AdminPanel
                     return;
                 }
 
-                // Обработка маршрутов
+                // routes processing
                 if (_routes.TryGetValue(request.Url.AbsolutePath, out var handler))
                 {
                     await handler(context);
                     return;
                 }
 
-                // Обработка HTML-страниц
+                // html pages processing
                 if (request.Url.AbsolutePath == "/" ||
                     request.Url.AbsolutePath == "/adminpanel" ||
                     request.Url.AbsolutePath == "/adminpanel/")
@@ -101,14 +101,14 @@ namespace Oxide.Ext.AdminPanel
                     return;
                 }
 
-                // Если ничего не найдено, возвращаем 404
+                // if nothing found return 404 error
                 response.StatusCode = 404;
                 await ServeContentAsync(response, Encoding.UTF8.GetBytes("Not Found"), "text/plain");
                 _logger.LogError($"Unhandled request: {request.Url.AbsolutePath}");
             }
             catch (Exception ex)
             {
-                // Обработка исключений
+                // exceptions
                 response.StatusCode = 500;
                 await ServeContentAsync(response, Encoding.UTF8.GetBytes("Internal Server Error"), "text/plain");
                 _logger.LogError($"Error processing request: {ex}");

@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>AdminPanel</title>
+	<link href="/adminpanel/css/styles.css" rel="stylesheet">
+	<script src="/adminpanel/js/scripts.js"></script>
+</head>
+<body class="bg-gray-100 dark:bg-gray-900 flex items-center justify-center min-h-screen p-4">
+	<div class="bg-white dark:bg-gray-800 p-8 rounded-xl shadow-2xl w-full max-w-sm">
+		<h1 class="text-3xl font-bold text-gray-800 dark:text-white mb-8 text-center relative">
+			<span class="bg-gradient-to-r from-blue-500 to-purple-600 bg-clip-text text-transparent">Авторизация</span>
+			<span class="absolute inset-x-0 -bottom-1 h-0.5 bg-gradient-to-r from-blue-500 to-purple-600"></span>
+		</h1>
+		<form class="space-y-6">
+			<div>
+				<label for="username" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Имя пользователя</label>
+				<input type="text" id="username" name="username" class="w-full px-4 py-3 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 dark:text-white placeholder-gray-400 transition-all duration-300" placeholder="Введите имя пользователя" required>
+			</div>
+			<div>
+				<label for="password" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Пароль</label>
+				<input type="password" id="password" name="password" class="w-full px-4 py-3 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 dark:text-white placeholder-gray-400 transition-all duration-300" placeholder="Введите пароль" required>
+			</div>
+			<div class="flex items-center justify-between">
+				<label class="flex items-center space-x-2">
+					<input type="checkbox" name="remember" class="rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500 dark:bg-gray-700 transition-all duration-300">
+					<span class="text-sm text-gray-700 dark:text-gray-300">Запомнить меня</span>
+				</label>
+			</div>
+			<button type="submit" class="w-full bg-gradient-to-r from-blue-500 to-purple-600 text-white px-4 py-3 rounded-lg hover:from-blue-600 hover:to-purple-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 transition-all duration-300 transform hover:scale-105">
+				Войти
+			</button>
+		</form>
+	</div>
+</body>
+</html>

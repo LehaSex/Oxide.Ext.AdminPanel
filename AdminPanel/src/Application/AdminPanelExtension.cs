@@ -115,12 +115,14 @@ namespace Oxide.Ext.AdminPanel
             // paths for saving files
             string cssFilePath = Path.Combine(_cssPath, "styles.css");
             string jsFilePath = Path.Combine(_jsPath, "scripts.js");
+            string htmlFilePath = Path.Combine(_htmlPath, "index.html");
 
             // resources to extract
             var resources = new Dictionary<string, string>
             {
                 { "Oxide.Ext.AdminPanel.Resources.styles.css", cssFilePath },
-                { "Oxide.Ext.AdminPanel.Resources.scripts.js", jsFilePath }
+                { "Oxide.Ext.AdminPanel.Resources.scripts.js", jsFilePath },
+                { "Oxide.Ext.AdminPanel.Resources.index.html", htmlFilePath }
             };
 
             foreach (var resource in resources)
@@ -152,7 +154,7 @@ namespace Oxide.Ext.AdminPanel
                     _container.Resolve<IFileSystem>()
                 );
             });
-            // Регистрируем фабрику для RequestHandler
+            // request handler factory
             _container.Register<RequestHandler>(() =>
             {
                 var wwwrootPath = Path.Combine(AppContext.BaseDirectory, "wwwroot");
@@ -171,6 +173,7 @@ namespace Oxide.Ext.AdminPanel
                 );
             });
 
+            // auth controller factory
             _container.Register<AuthController>(() =>
             {
                 var fileSystem = _container.Resolve<IFileSystem>();
@@ -180,6 +183,7 @@ namespace Oxide.Ext.AdminPanel
                 return new AuthController(fileSystem, htmlPath, responseHelper);
             });
 
+            // main panel controller factory
             _container.Register<MainPanelController>(() =>
             {
                 var fileSystem = _container.Resolve<IFileSystem>();
@@ -188,10 +192,6 @@ namespace Oxide.Ext.AdminPanel
 
                 return new MainPanelController(fileSystem, htmlPath, responseHelper);
             });
-
-            // CONTROLLERS
-            _container.Register<AuthController, AuthController>();
-            _container.Register<MainPanelController, MainPanelController>();
 
             // MIDDLEWARE
             _container.Register<LoggingMiddleware, LoggingMiddleware>();

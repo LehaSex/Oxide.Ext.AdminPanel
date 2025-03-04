@@ -14,7 +14,6 @@ public class ResponseHelper
         _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
     }
 
-    // Остальные методы остаются без изменений
     public async Task ServeContentAsync(HttpListenerResponse response, byte[] buffer, string contentType)
     {
         response.ContentLength64 = buffer.Length;
