@@ -47,3 +47,9 @@ jobs:
       - name: Build DLL (Oxide)
         run: dotnet build Oxide.Ext.AdminPanel.csproj -c Release /p:Platform=Oxide /p:Version=$env:VERSION /p:BuildServer=Github -f net48
         working-directory: Oxide.Ext.AdminPanel
+
+      - name: Upload DLL as artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: Oxide.Ext.AdminPanel.dll
+        path: ${{ github.workspace }}/Oxide.Ext.AdminPanel/bin/Oxide/Release/net48/Oxide.Ext.AdminPanel.dll
