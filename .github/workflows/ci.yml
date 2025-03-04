@@ -45,5 +45,5 @@ jobs:
         run: .\Download-References.ps1
 
       - name: Build DLL (Oxide)
-        run: dotnet build Oxide.Ext.Discord.csproj -c Release /p:Platform=Oxide /p:Version=$env:VERSION /p:BuildServer=Github -f net48
-        working-directory: Oxide.Ext.Discord
+        run: dotnet build Oxide.Ext.AdminPanel.csproj -c Release /p:Platform=Oxide /p:Version=$env:VERSION /p:BuildServer=Github -f net48
+        working-directory: Oxide.Ext.AdminPanel
