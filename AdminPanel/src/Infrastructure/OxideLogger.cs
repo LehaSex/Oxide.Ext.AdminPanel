@@ -20,6 +20,15 @@ namespace Oxide.Ext.AdminPanel
         public void LogError(string message)
         {
             Interface.Oxide.LogError(FormatMessage(message)); 
+        }        
+        
+        /// <summary>
+        /// Logs an warning message.
+        /// </summary>
+        /// <param name="message">The message to log.</param>
+        public void LogWarning(string message)
+        {
+            Interface.Oxide.LogWarning(FormatMessage(message)); 
         }
 
         /// <summary>

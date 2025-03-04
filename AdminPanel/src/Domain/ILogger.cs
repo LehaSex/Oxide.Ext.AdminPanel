@@ -6,5 +6,6 @@ namespace Oxide.Ext.AdminPanel
     {
         void LogInfo(string message);
         void LogError(string message);
+        void LogWarning(string message);
     }
 }

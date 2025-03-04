@@ -21,10 +21,12 @@ namespace Oxide.Ext.AdminPanel
         private readonly IWebServer _webServer;
         private readonly ILogger _logger;
         private readonly IFileSystem _fileSystem;
+        private readonly IDependencyContainer _container;
 
         private string _wwwrootPath;
         private string _cssPath;
         private string _jsPath;
+        private string _htmlPath;
 
         /// <summary>
         /// Version number used by oxide
@@ -42,10 +44,13 @@ namespace Oxide.Ext.AdminPanel
 
             _logger = new OxideLogger();
             _fileSystem = new FileSystem();
+            _container = new DependencyContainer();
+
 
             _wwwrootPath = Path.Combine(AppContext.BaseDirectory, "wwwroot");
             _cssPath = Path.Combine(_wwwrootPath, "css");
             _jsPath = Path.Combine(_wwwrootPath, "js");
+            _htmlPath = Path.Combine(_wwwrootPath, "html");
 
             InitDirectories();
 
@@ -57,10 +62,12 @@ namespace Oxide.Ext.AdminPanel
             if (_logger == null)
             {
                 throw new InvalidOperationException("Logger is not initialized.");
-            }            
+            }
+
+            RegisterDependencies();
 
             // Web server instance
-            var requestHandler = new RequestHandler(_fileSystem, _logger, _wwwrootPath, _cssPath, _jsPath);
+            var requestHandler = _container.Resolve<RequestHandler>();
             _webServer = new WebServer(requestHandler, _logger);
         }
 
@@ -89,7 +96,8 @@ namespace Oxide.Ext.AdminPanel
             {
                 _wwwrootPath,
                 _jsPath,
-                _cssPath
+                _cssPath,
+                _htmlPath,
             };
 
             foreach (string directory in directories)
@@ -130,6 +138,63 @@ namespace Oxide.Ext.AdminPanel
                     _logger.LogError($"Error extracting '{Path.GetFileName(outputPath)}': {ex}");
                 }
             }
+        }
+
+        private void RegisterDependencies()
+        {
+            _container.Register<IDependencyContainer>(() => _container);
+            _container.Register<ILogger, OxideLogger>();
+            _container.Register<IFileSystem, FileSystem>();
+            _container.Register<ResponseHelper>(() =>
+            {
+                return new ResponseHelper(
+                    _container.Resolve<ILogger>(),
+                    _container.Resolve<IFileSystem>()
+                );
+            });
+            // Регистрируем фабрику для RequestHandler
+            _container.Register<RequestHandler>(() =>
+            {
+                var wwwrootPath = Path.Combine(AppContext.BaseDirectory, "wwwroot");
+                var cssPath = Path.Combine(wwwrootPath, "css");
+                var jsPath = Path.Combine(wwwrootPath, "js");
+                var htmlPath = Path.Combine(wwwrootPath, "html");
+
+                return new RequestHandler(
+                    _container.Resolve<IFileSystem>(),
+                    _container.Resolve<ILogger>(),
+                    _container,
+                    wwwrootPath,
+                    cssPath,
+                    jsPath,
+                    htmlPath
+                );
+            });
+
+            _container.Register<AuthController>(() =>
+            {
+                var fileSystem = _container.Resolve<IFileSystem>();
+                var responseHelper = _container.Resolve<ResponseHelper>();
+                string htmlPath = Path.Combine(AppContext.BaseDirectory, "wwwroot", "html");
+
+                return new AuthController(fileSystem, htmlPath, responseHelper);
+            });
+
+            _container.Register<MainPanelController>(() =>
+            {
+                var fileSystem = _container.Resolve<IFileSystem>();
+                var responseHelper = _container.Resolve<ResponseHelper>();
+                string htmlPath = Path.Combine(AppContext.BaseDirectory, "wwwroot", "html");
+
+                return new MainPanelController(fileSystem, htmlPath, responseHelper);
+            });
+
+            // CONTROLLERS
+            _container.Register<AuthController, AuthController>();
+            _container.Register<MainPanelController, MainPanelController>();
+
+            // MIDDLEWARE
+            _container.Register<LoggingMiddleware, LoggingMiddleware>();
         }
 
         /// <summary>
