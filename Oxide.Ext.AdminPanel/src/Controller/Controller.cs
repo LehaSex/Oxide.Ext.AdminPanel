@@ -11,7 +11,7 @@ namespace Oxide.Ext.AdminPanel
     {
         private readonly IFileSystem _fileSystem;
         private readonly string _htmlPath;
-        private readonly ResponseHelper _responseHelper;
+        private readonly IResponseHelper _responseHelper;
 
         /// <summary>
         /// Controller, logic
@@ -20,7 +20,7 @@ namespace Oxide.Ext.AdminPanel
         /// <param name="htmlPath">name of file in wwwroot/html/</param>
         /// <param name="responseHelper">response helper</param>
         /// <exception cref="ArgumentNullException"></exception>
-        public Controller(IFileSystem fileSystem, string htmlPath, ResponseHelper responseHelper)
+        public Controller(IFileSystem fileSystem, string htmlPath, IResponseHelper responseHelper)
         {
             _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
             _htmlPath = htmlPath ?? throw new ArgumentNullException(nameof(htmlPath));
@@ -39,6 +39,11 @@ namespace Oxide.Ext.AdminPanel
             }
 
             await _responseHelper.ServeFileAsync(response, viewPath, "text/html");
+        }
+
+        public IResponseHelper Get_responseHelper()
+        {
+            return _responseHelper;
         }
     }
 }

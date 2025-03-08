@@ -6,7 +6,7 @@ namespace Oxide.Ext.AdminPanel
 {
     public class MainPanelController : Controller
     {
-        public MainPanelController(IFileSystem fileSystem, string htmlPath, ResponseHelper responseHelper)
+        public MainPanelController(IFileSystem fileSystem, string htmlPath, IResponseHelper responseHelper)
             : base(fileSystem, htmlPath, responseHelper) 
         {
         }

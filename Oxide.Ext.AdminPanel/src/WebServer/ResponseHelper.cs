@@ -3,7 +3,7 @@ using System.Threading.Tasks;
 using System;
 using System.Net;
 
-public class ResponseHelper
+public class ResponseHelper : IResponseHelper
 {
     private readonly ILogger _logger;
     private readonly IFileSystem _fileSystem;

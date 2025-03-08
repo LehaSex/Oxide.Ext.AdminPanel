@@ -48,14 +48,22 @@ namespace Oxide.Ext.AdminPanel
 
         public object Resolve(Type serviceType)
         {
-            if (!_registrations.ContainsKey(serviceType))
+            // Проверяем фабричные методы
+            if (_factories.TryGetValue(serviceType, out var factory))
             {
-                throw new InvalidOperationException($"Service {serviceType.Name} is not registered.");
+                return factory();
             }
 
-            var implementationType = _registrations[serviceType];
-            return CreateInstance(implementationType);
+            // Проверяем стандартную регистрацию
+            if (_registrations.TryGetValue(serviceType, out var implementationType))
+            {
+                return CreateInstance(implementationType);
+            }
+
+            // Если тип не зарегистрирован
+            throw new InvalidOperationException($"Service {serviceType.Name} is not registered.");
         }
+
 
         private object CreateInstance(Type implementationType)
         {

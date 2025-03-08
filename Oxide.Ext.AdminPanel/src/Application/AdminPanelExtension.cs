@@ -147,7 +147,7 @@ namespace Oxide.Ext.AdminPanel
             _container.Register<IDependencyContainer>(() => _container);
             _container.Register<ILogger, OxideLogger>();
             _container.Register<IFileSystem, FileSystem>();
-            _container.Register<ResponseHelper>(() =>
+            _container.Register<IResponseHelper>(() =>
             {
                 return new ResponseHelper(
                     _container.Resolve<ILogger>(),
@@ -177,17 +177,18 @@ namespace Oxide.Ext.AdminPanel
             _container.Register<AuthController>(() =>
             {
                 var fileSystem = _container.Resolve<IFileSystem>();
-                var responseHelper = _container.Resolve<ResponseHelper>();
+                var responseHelper = _container.Resolve<IResponseHelper>();
                 string htmlPath = Path.Combine(AppContext.BaseDirectory, "wwwroot", "html");
+                string secretKey = "123";
 
-                return new AuthController(fileSystem, htmlPath, responseHelper);
+                return new AuthController(_container.Resolve<IFileSystem>(), htmlPath, _container.Resolve<IResponseHelper>(), _container.Resolve<ILogger>(), secretKey);
             });
 
             // main panel controller factory
             _container.Register<MainPanelController>(() =>
             {
                 var fileSystem = _container.Resolve<IFileSystem>();
-                var responseHelper = _container.Resolve<ResponseHelper>();
+                var responseHelper = _container.Resolve<IResponseHelper>();
                 string htmlPath = Path.Combine(AppContext.BaseDirectory, "wwwroot", "html");
 
                 return new MainPanelController(fileSystem, htmlPath, responseHelper);
@@ -195,6 +196,13 @@ namespace Oxide.Ext.AdminPanel
 
             // MIDDLEWARE
             _container.Register<LoggingMiddleware, LoggingMiddleware>();
+
+            _container.Register<JwtAuthMiddleware>(() => new JwtAuthMiddleware(
+                _container.Resolve<ILogger>(),
+                "123" 
+            ));
+            
+
         }
 
         /// <summary>

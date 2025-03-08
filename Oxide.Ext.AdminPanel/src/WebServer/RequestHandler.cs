@@ -41,7 +41,7 @@ namespace Oxide.Ext.AdminPanel
             var mainController = _container.Resolve<MainPanelController>();
 
             _routes["/adminpanel/auth"] = context => ExecuteWithMiddleware(context, authController.HandleRequest, typeof(LoggingMiddleware));
-            _routes["/adminpanel/mainpanel"] = context => ExecuteWithMiddleware(context, mainController.HandleRequest, typeof(LoggingMiddleware));
+            _routes["/adminpanel/mainpanel"] = context => ExecuteWithMiddleware(context, mainController.HandleRequest, typeof(LoggingMiddleware), typeof(JwtAuthMiddleware));
         }
 
         private async Task ExecuteWithMiddleware(HttpListenerContext context, Func<HttpListenerContext, Task> handler, params Type[] middlewareTypes)

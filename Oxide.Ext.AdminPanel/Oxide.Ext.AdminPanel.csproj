@@ -66,6 +66,11 @@
     <Folder Include="tests\" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="Microsoft.IdentityModel.Tokens" Version="8.6.0" />
+    <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.6.0" />
+  </ItemGroup>
+
     <PropertyGroup>
 	    <ImplicitUsings>disable</ImplicitUsings>
 	    <RootNamespace>Oxide.Ext.AdminPanel</RootNamespace>
