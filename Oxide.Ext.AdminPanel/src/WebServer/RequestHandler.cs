@@ -39,9 +39,13 @@ namespace Oxide.Ext.AdminPanel
             // allow controllers from DI-container
             var authController = _container.Resolve<AuthController>();
             var mainController = _container.Resolve<MainPanelController>();
+            var apiGetPlayerCount = _container.Resolve<ApiGetPlayerCount>();
+            var apiGetPerformance = _container.Resolve<ApiGetPerformance>();
 
             _routes["/adminpanel/auth"] = context => ExecuteWithMiddleware(context, authController.HandleRequest, typeof(LoggingMiddleware));
             _routes["/adminpanel/mainpanel"] = context => ExecuteWithMiddleware(context, mainController.HandleRequest, typeof(LoggingMiddleware), typeof(JwtAuthMiddleware));
+            _routes["/adminpanel/api/player/count"] = context => ExecuteWithMiddleware(context, apiGetPlayerCount.GetPlayerCount, typeof(LoggingMiddleware));
+            _routes["/adminpanel/api/server/performance"] = context => ExecuteWithMiddleware(context, apiGetPerformance.GetPerformance, typeof(LoggingMiddleware));
         }
 
         private async Task ExecuteWithMiddleware(HttpListenerContext context, Func<HttpListenerContext, Task> handler, params Type[] middlewareTypes)

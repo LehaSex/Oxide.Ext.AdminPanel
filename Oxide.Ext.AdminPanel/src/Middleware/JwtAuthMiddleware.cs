@@ -34,7 +34,7 @@ namespace Oxide.Ext.AdminPanel
             }
 
             // Проверяем наличие токена в заголовках
-            string token = request.Headers["Authorization"]?.Replace("Bearer ", "");
+            string? token = request.Headers["Authorization"]?.Replace("Bearer ", "");
 
             if (!string.IsNullOrEmpty(token) && ValidateJwtToken(token))
             {
@@ -49,14 +49,18 @@ namespace Oxide.Ext.AdminPanel
             }
         }
 
-        private bool ValidateJwtToken(string token)
+        private bool ValidateJwtToken(string? token)
         {
+            if (string.IsNullOrEmpty(token))
+            {
+                return false;
+            }
+
             try
             {
                 var tokenHandler = new JwtSecurityTokenHandler();
                 var key = Encoding.UTF8.GetBytes(_secretKey);
 
-                // Настраиваем параметры валидации токена
                 var validationParameters = new TokenValidationParameters
                 {
                     ValidateIssuerSigningKey = true,
@@ -66,16 +70,15 @@ namespace Oxide.Ext.AdminPanel
                     ClockSkew = TimeSpan.Zero
                 };
 
-                // Пытаемся распарсить и валидировать токен
                 SecurityToken validatedToken;
                 tokenHandler.ValidateToken(token, validationParameters, out validatedToken);
 
-                return true; // Токен валиден
+                return true;
             }
             catch (Exception ex)
             {
                 _logger.LogError($"JWT validation failed: {ex.Message}");
-                return false; // Токен невалиден
+                return false;
             }
         }
     }

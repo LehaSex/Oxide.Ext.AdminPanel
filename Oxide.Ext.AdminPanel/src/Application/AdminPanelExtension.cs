@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -199,9 +200,26 @@ namespace Oxide.Ext.AdminPanel
 
             _container.Register<JwtAuthMiddleware>(() => new JwtAuthMiddleware(
                 _container.Resolve<ILogger>(),
-                "123" 
+            "123"
             ));
-            
+
+            _container.Register<Controller>(() => new Controller(
+                _container.Resolve<IFileSystem>(),
+                "wwwroot/html", // Путь к HTML-файлам
+                _container.Resolve<IResponseHelper>()
+            ));
+
+            _container.Register<ApiController>(() => new ApiController(
+                _container.Resolve<Controller>()
+            ));
+
+            _container.Register<ApiGetPlayerCount>(() => new ApiGetPlayerCount(
+                _container.Resolve<Controller>() 
+            ));            
+
+            _container.Register<ApiGetPerformance>(() => new ApiGetPerformance(
+                _container.Resolve<Controller>() 
+            ));
 
         }
 

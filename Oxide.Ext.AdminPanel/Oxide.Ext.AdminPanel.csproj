@@ -30,6 +30,9 @@
     <Reference Include="Assembly-CSharp">
       <HintPath>..\Dependencies\Assembly-CSharp.dll</HintPath>
     </Reference>
+    <Reference Include="Facepunch.System">
+      <HintPath>..\Dependencies\Facepunch.System.dll</HintPath>
+    </Reference>
     <Reference Include="Facepunch.UnityEngine">
       <HintPath>..\Dependencies\Facepunch.UnityEngine.dll</HintPath>
     </Reference>
