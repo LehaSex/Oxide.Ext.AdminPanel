@@ -4,247 +4,274 @@ using System.ComponentModel;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Security;
 using System.Threading.Tasks;
 using Oxide.Core;
 using Oxide.Core.Extensions;
 using UnityEngine;
+using VLB;
 
 namespace Oxide.Ext.AdminPanel
 {
-
-    public class AdminPanelExtension : Extension
+    public class AdminPanelExtension : Extension, IDisposable
     {
         public override string Name => "ServerPanel";
         public override string Author => "LehaSex";
-
         internal static VersionNumber ExtensionVersion;
 
         private readonly IWebServer _webServer;
         private readonly ILogger _logger;
         private readonly IFileSystem _fileSystem;
         private readonly IDependencyContainer _container;
+        private PathSettings _pathSettings = new PathSettings();
+        private readonly AdminPanelConfig _config;
 
-        private string _wwwrootPath;
-        private string _cssPath;
-        private string _jsPath;
-        private string _htmlPath;
-
-        /// <summary>
-        /// Version number used by oxide
-        /// </summary>
         public override VersionNumber Version => ExtensionVersion;
 
-        /// <summary>
-        /// Constructor for the extension
-        /// </summary>
-        /// <param name="manager">Oxide extension manager</param>
         public AdminPanelExtension(ExtensionManager manager) : base(manager)
         {
             AssemblyName assembly = Assembly.GetExecutingAssembly().GetName();
             ExtensionVersion = new VersionNumber(assembly.Version.Major, assembly.Version.Minor, assembly.Version.Build);
 
-            _logger = new OxideLogger();
-            _fileSystem = new FileSystem();
+            _logger = new OxideLogger() ?? throw new InvalidOperationException("Logger initialization failed");
+            _fileSystem = new FileSystem() ?? throw new InvalidOperationException("FileSystem initialization failed");
             _container = new DependencyContainer();
 
+            string configPath = Path.Combine(AppContext.BaseDirectory, "adminpanel_config.json");
+            _config = AdminPanelConfig.Load(configPath);
+            ValidateJwtKey();
 
-            _wwwrootPath = Path.Combine(AppContext.BaseDirectory, "wwwroot");
-            _cssPath = Path.Combine(_wwwrootPath, "css");
-            _jsPath = Path.Combine(_wwwrootPath, "js");
-            _htmlPath = Path.Combine(_wwwrootPath, "html");
-
+            InitializePaths();
             InitDirectories();
-
-            if (_fileSystem == null)
-            {
-                throw new InvalidOperationException("FileSystem is not initialized.");
-            }
-
-            if (_logger == null)
-            {
-                throw new InvalidOperationException("Logger is not initialized.");
-            }
-
             RegisterDependencies();
 
-            // Web server instance
-            var requestHandler = _container.Resolve<RequestHandler>();
+            RequestHandler requestHandler = _container.Resolve<RequestHandler>();
             _webServer = new WebServer(requestHandler, _logger);
         }
 
-        /// <summary>
-        /// Called when mod is loaded
-        /// </summary>
+        private void InitializePaths()
+        {
+            _pathSettings.WwwRoot = Path.Combine(AppContext.BaseDirectory, "wwwroot");
+            _pathSettings.Css = Path.Combine(_pathSettings.WwwRoot, "css");
+            _pathSettings.Js = Path.Combine(_pathSettings.WwwRoot, "js");
+            _pathSettings.Html = Path.Combine(_pathSettings.WwwRoot, "html");
+        }
+
         public override async void OnModLoad()
         {
-            await ExtractResources();
-            _logger.LogInfo("AdminPanel extension loaded. Starting web server...");
-            await _webServer.StartAsync();
+            try
+            {
+                if (_config.RequireHttps)
+                {
+                    _logger.LogInfo("HTTPS is required for AdminPanel");
+                }
+
+                await ExtractResources();
+                _logger.LogInfo("AdminPanel extension loaded. Starting web server...");
+                await _webServer.StartAsync();
+            }
+            catch (Exception ex) when (ex is InvalidOperationException || ex is SecurityException)
+            {
+                _logger.LogError($"SECURITY ERROR: {ex.Message}");
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Failed to load AdminPanel: {ex}");
+                throw;
+            }
         }
 
-        /// <summary>
-        /// Called when server is shutdown
-        /// </summary>
         public override async void OnShutdown()
         {
-            _logger.LogInfo("AdminPanel extension unloaded. Stopping web server...");
-            await _webServer.StopAsync();
+            try
+            {
+                _logger.LogInfo("Stopping web server...");
+                await _webServer.StopAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Error during shutdown: {ex}");
+            }
+            finally
+            {
+                Dispose();
+            }
         }
 
-        public void InitDirectories()
+        private void InitDirectories()
         {
-            string[] directories = new[]
-            {
-                _wwwrootPath,
-                _jsPath,
-                _cssPath,
-                _htmlPath,
-            };
+            var directories = new[] { _pathSettings.WwwRoot, _pathSettings.Css, _pathSettings.Js, _pathSettings.Html };
 
-            foreach (string directory in directories)
+            foreach (var directory in directories)
             {
-                if (!_fileSystem.DirectoryExists(directory))
+                try
                 {
-                    _fileSystem.CreateDirectory(directory);
-                    _logger.LogInfo($"Directory created: {directory}");
+                    if (!_fileSystem.DirectoryExists(directory))
+                    {
+                        _fileSystem.CreateDirectory(directory);
+                        _logger.LogInfo($"Directory created: {directory}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError($"Failed to create directory {directory}: {ex}");
+                    throw;
                 }
             }
         }
 
         private async Task ExtractResources()
         {
-            // paths for saving files
-            string cssFilePath = Path.Combine(_cssPath, "styles.css");
-            string jsFilePath = Path.Combine(_jsPath, "scripts.js");
-            string htmlFilePath = Path.Combine(_htmlPath, "index.html");
-
-            // resources to extract
             var resources = new Dictionary<string, string>
             {
-                { "Oxide.Ext.AdminPanel.Resources.styles.css", cssFilePath },
-                { "Oxide.Ext.AdminPanel.Resources.scripts.js", jsFilePath },
-                { "Oxide.Ext.AdminPanel.Resources.index.html", htmlFilePath }
+                { "Oxide.Ext.AdminPanel.Resources.styles.css", Path.Combine(_pathSettings.Css, "styles.css") },
+                { "Oxide.Ext.AdminPanel.Resources.scripts.js", Path.Combine(_pathSettings.Js, "scripts.js") },
+                { "Oxide.Ext.AdminPanel.Resources.index.html", Path.Combine(_pathSettings.Html, "index.html") }
             };
 
             foreach (var resource in resources)
             {
-                string resourceName = resource.Key;
-                string outputPath = resource.Value;
-
                 try
                 {
-                    await ResourceHelper.ExtractEmbeddedResourceAsync(resourceName, outputPath);
-                    _logger.LogInfo($"File '{Path.GetFileName(outputPath)}' extracted and saved: {outputPath}");
+                    await ResourceHelper.ExtractEmbeddedResourceAsync(resource.Key, resource.Value);
+                    _logger.LogInfo($"File extracted: {resource.Value}");
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError($"Error extracting '{Path.GetFileName(outputPath)}': {ex}");
+                    _logger.LogError($"Error extracting {resource.Key}: {ex}");
+                    throw;
                 }
             }
         }
 
         private void RegisterDependencies()
         {
+            // Core dependencies
             _container.Register<IDependencyContainer>(() => _container);
-            _container.Register<ILogger, OxideLogger>();
-            _container.Register<IFileSystem, FileSystem>();
+            _container.Register<ILogger>(() => _logger);
+            _container.Register<IFileSystem>(() => _fileSystem);
+
+            RegisterMiddlewares();
+            RegisterResponseHelper();
+            RegisterRequestHandler();
+            RegisterAuthComponents();
+            RegisterControllers();
+            RegisterWebSocketComponents();
+/*            ValidateWebSocketDependencies();*/
+        }
+
+        private void RegisterResponseHelper()
+        {
             _container.Register<IResponseHelper>(() =>
-            {
-                return new ResponseHelper(
-                    _container.Resolve<ILogger>(),
-                    _container.Resolve<IFileSystem>()
-                );
-            });
-            // request handler factory
+                new ResponseHelper(_logger, _fileSystem));
+        }
+
+        private void RegisterRequestHandler()
+        {
             _container.Register<RequestHandler>(() =>
-            {
-                var wwwrootPath = Path.Combine(AppContext.BaseDirectory, "wwwroot");
-                var cssPath = Path.Combine(wwwrootPath, "css");
-                var jsPath = Path.Combine(wwwrootPath, "js");
-                var htmlPath = Path.Combine(wwwrootPath, "html");
+                new RequestHandler(_fileSystem, _logger, _container,
+                    _pathSettings.WwwRoot, _pathSettings.Css,
+                    _pathSettings.Js, _pathSettings.Html));
+        }
 
-                return new RequestHandler(
-                    _container.Resolve<IFileSystem>(),
-                    _container.Resolve<ILogger>(),
-                    _container,
-                    wwwrootPath,
-                    cssPath,
-                    jsPath,
-                    htmlPath
-                );
-            });
-
-            // auth controller factory
+        private void RegisterAuthComponents()
+        {
             _container.Register<AuthController>(() =>
-            {
-                var fileSystem = _container.Resolve<IFileSystem>();
-                var responseHelper = _container.Resolve<IResponseHelper>();
-                string htmlPath = Path.Combine(AppContext.BaseDirectory, "wwwroot", "html");
-                string secretKey = "123";
-
-                return new AuthController(_container.Resolve<IFileSystem>(), htmlPath, _container.Resolve<IResponseHelper>(), _container.Resolve<ILogger>(), secretKey);
-            });
-
-            // main panel controller factory
-            _container.Register<MainPanelController>(() =>
-            {
-                var fileSystem = _container.Resolve<IFileSystem>();
-                var responseHelper = _container.Resolve<IResponseHelper>();
-                string htmlPath = Path.Combine(AppContext.BaseDirectory, "wwwroot", "html");
-
-                return new MainPanelController(fileSystem, htmlPath, responseHelper);
-            });
-
-            // MIDDLEWARE
-            _container.Register<LoggingMiddleware, LoggingMiddleware>();
-
-            _container.Register<JwtAuthMiddleware>(() => new JwtAuthMiddleware(
-                _container.Resolve<ILogger>(),
-            "123"
-            ));
-
-            _container.Register<Controller>(() => new Controller(
-                _container.Resolve<IFileSystem>(),
-                "wwwroot/html", // Путь к HTML-файлам
-                _container.Resolve<IResponseHelper>()
-            ));
-
-            _container.Register<ApiController>(() => new ApiController(
-                _container.Resolve<Controller>()
-            ));
-
-            _container.Register<ApiGetPlayerCount>(() => new ApiGetPlayerCount(
-                _container.Resolve<Controller>() 
-            ));            
-
-            _container.Register<ApiGetPerformance>(() => new ApiGetPerformance(
-                _container.Resolve<Controller>() 
-            ));
-
+                new AuthController(_fileSystem, _pathSettings.Html,
+                    _container.Resolve<IResponseHelper>(), _logger, _config.JwtSecretKey));
         }
 
-        /// <summary>
-        /// Get path to wwwroot
-        /// </summary>
-        public string GetWwwRootPath()
+        private void RegisterControllers()
         {
-            return _wwwrootPath;
-        }        
-        
-        /// <summary>
-        /// Get path to wwwroot
-        /// </summary>
-        public string GetCSSPath()
-        {
-            return _cssPath;
-        }        
-        /// <summary>
-        /// Get path to wwwroot
-        /// </summary>
-        public string GetJSPath()
-        {
-            return _jsPath;
+            _container.Register<Controller>(() =>
+                new Controller(_fileSystem, _pathSettings.Html,
+                    _container.Resolve<IResponseHelper>()));
+
+            _container.Register<ApiController>(() =>
+                new ApiController(_container.Resolve<Controller>()));
+
+            _container.Register<ApiGetPlayerCount>(() =>
+                new ApiGetPlayerCount(_container.Resolve<Controller>()));
+
+            _container.Register<ApiGetPerformance>(() =>
+                new ApiGetPerformance(_container.Resolve<Controller>()));
         }
 
-    } 
+        private void RegisterWebSocketComponents()
+        {
+            _container.Register<IWebSocketDataProvider>("performance", () =>
+                new ApiGetPerformance(_container.Resolve<Controller>()));
+
+            _container.Register<WebSocketHandler>(() =>
+            {
+                var providers = new Dictionary<string, IWebSocketDataProvider>
+                {
+                    ["performance"] = _container.Resolve<IWebSocketDataProvider>("performance")
+                };
+                return new WebSocketHandler(_logger, providers);
+            });
+        }
+
+        private void RegisterMiddlewares()
+        {
+            _container.Register<LoggingMiddleware>(() =>
+                new LoggingMiddleware(_container.Resolve<ILogger>()));
+            _container.Register<JwtAuthMiddleware>(() =>
+                new JwtAuthMiddleware(_logger, _config.JwtSecretKey));
+        }
+
+/*        private void ValidateWebSocketDependencies()
+        {
+            try
+            {
+                _logger.LogInfo("Validating WebSocket dependencies...");
+
+                var controller = _container.Resolve<Controller>();
+                var provider = _container.Resolve<IWebSocketDataProvider>("performance");
+                var handler = _container.Resolve<WebSocketHandler>();
+
+                _logger.LogInfo("WebSocket dependencies validated successfully");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"WebSocket dependency validation failed: {ex}");
+                throw;
+            }
+        }*/
+
+        private void ValidateJwtKey()
+        {
+            if (string.IsNullOrWhiteSpace(_config.JwtSecretKey))
+            {
+                _logger.LogError("JWT secret key is empty!");
+                throw new InvalidOperationException("JWT secret key must not be empty");
+            }
+
+            if (_config.JwtSecretKey.Length < 32)
+            {
+                _logger.LogWarning("JWT secret key is too short (recommended minimum is 32 chars)");
+            }
+
+            if (_config.JwtSecretKey == "123" || _config.JwtSecretKey == "secret")
+            {
+                _logger.LogError("INSECURE DEFAULT JWT SECRET KEY DETECTED!");
+                throw new InvalidOperationException("Insecure default JWT key detected");
+            }
+        }
+
+        public void Dispose()
+        {
+            (_webServer as IDisposable)?.Dispose();
+            (_container as IDisposable)?.Dispose();
+        }
+
+        private class PathSettings
+        {
+            public string WwwRoot { get; set; } = string.Empty;
+            public string Css { get; set; } = string.Empty;
+            public string Js { get; set; } = string.Empty;
+            public string Html { get; set; } = string.Empty;
+        }
+    }
 }

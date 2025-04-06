@@ -8,10 +8,38 @@ namespace Oxide.Ext.AdminPanel
     {
         private readonly Dictionary<Type, Type> _registrations = new Dictionary<Type, Type>();
         private readonly Dictionary<Type, Func<object>> _factories = new Dictionary<Type, Func<object>>(); // factory storage
+        private readonly Dictionary<(Type, string), Func<object>> _namedFactories = new Dictionary<(Type, string), Func<object>>(); 
 
         public void Register<TService, TImplementation>() where TImplementation : TService
         {
             _registrations[typeof(TService)] = typeof(TImplementation);
+        }
+
+        public void Register<TService>(string name, Func<TService> factory)
+        {
+            if (factory == null)
+                throw new ArgumentNullException(nameof(factory));
+            if (string.IsNullOrEmpty(name))
+                throw new ArgumentException("Name cannot be null or empty", nameof(name));
+
+            _namedFactories[(typeof(TService), name)] = () =>
+            {
+                var instance = factory();
+                if (instance == null)
+                    throw new InvalidOperationException($"Factory for {typeof(TService).Name} with name '{name}' returned null.");
+                return instance;
+            };
+        }
+
+        public TService Resolve<TService>(string name)
+        {
+            if (string.IsNullOrEmpty(name))
+                throw new ArgumentException("Name cannot be null or empty", nameof(name));
+
+            if (_namedFactories.TryGetValue((typeof(TService), name), out var factory))
+                return (TService)factory();
+
+            throw new InvalidOperationException($"Service {typeof(TService).Name} with name '{name}' is not registered.");
         }
 
         public void Register<TService>(Func<TService> factory) // implement method for register factory
@@ -48,19 +76,19 @@ namespace Oxide.Ext.AdminPanel
 
         public object Resolve(Type serviceType)
         {
-            // Проверяем фабричные методы
+            // check factories
             if (_factories.TryGetValue(serviceType, out var factory))
             {
                 return factory();
             }
 
-            // Проверяем стандартную регистрацию
+            // check standart register
             if (_registrations.TryGetValue(serviceType, out var implementationType))
             {
                 return CreateInstance(implementationType);
             }
 
-            // Если тип не зарегистрирован
+            // if type is not registred
             throw new InvalidOperationException($"Service {serviceType.Name} is not registered.");
         }
 

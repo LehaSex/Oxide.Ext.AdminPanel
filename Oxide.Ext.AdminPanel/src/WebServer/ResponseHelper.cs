@@ -10,7 +10,7 @@ namespace Oxide.Ext.AdminPanel
     {
         private readonly ILogger _logger;
         private readonly IFileSystem _fileSystem;
-        private readonly ConcurrentDictionary<string, byte[]> _fileCache = new ConcurrentDictionary<string, byte[]>(); // Кэш файлов
+        private readonly ConcurrentDictionary<string, byte[]> _fileCache = new ConcurrentDictionary<string, byte[]>(); // file cache
 
         public ResponseHelper(ILogger logger, IFileSystem fileSystem)
         {

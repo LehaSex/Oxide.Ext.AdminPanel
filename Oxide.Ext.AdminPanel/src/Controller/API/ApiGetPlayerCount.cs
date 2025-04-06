@@ -1,11 +1,17 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Net;
 using System.Threading.Tasks;
 
 namespace Oxide.Ext.AdminPanel
 {
-    public class ApiGetPlayerCount : ApiController
+    public class ApiGetPlayerCount : ApiController, IWebSocketDataProvider
     {
+        [WebSocketExpose]
+        private int _playerCount;
+        private int _maxPlayers;
+        public string DataKey => "players";
+
         public ApiGetPlayerCount(Controller controller)
             : base(controller)
         {
@@ -13,20 +19,29 @@ namespace Oxide.Ext.AdminPanel
 
         public async Task GetPlayerCount(HttpListenerContext context)
         {
-            int playerCount = GetPlayerCountFromServer();
-            int maxPlayers = GetMaxPlayers();
-            await SendResponse(context.Response, true, "OK", new { PlayerCount = playerCount, MaxPlayers = maxPlayers });
+            GetAll();
+            await SendResponse(context.Response, true, "OK", new { PlayerCount = _playerCount, MaxPlayers = _maxPlayers });
         }
 
         private int GetPlayerCountFromServer()
         {
-            // Логика получения количества игроков
             return BasePlayer.activePlayerList.Count;
         }        
         private int GetMaxPlayers()
         {
-            // Логика получения количества игроков
             return ConVar.Server.maxplayers;
+        }
+
+        private void GetAll()
+        {
+            _playerCount = GetPlayerCountFromServer();
+            _maxPlayers = GetMaxPlayers();
+        }
+
+        public Dictionary<string, object> GetWebSocketData()
+        {
+            GetAll();
+            return WebSocketExposeHelper.GetExposedValues(this);
         }
     }
 

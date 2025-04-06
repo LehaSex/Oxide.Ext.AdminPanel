@@ -14,7 +14,7 @@ namespace Oxide.Ext.AdminPanel
         private readonly string _secretKey;
 
         public AuthController(IFileSystem fileSystem, string htmlPath, IResponseHelper responseHelper, ILogger logger, string secretKey)
-            : base(fileSystem, htmlPath, responseHelper) // Передаем параметры в базовый класс
+            : base(fileSystem, htmlPath, responseHelper) 
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _secretKey = secretKey ?? throw new ArgumentNullException(nameof(secretKey));
@@ -51,7 +51,7 @@ namespace Oxide.Ext.AdminPanel
 
         private bool AuthenticateUser(string username, string password)
         {
-            // Пример простой аутентификации
+            // dummy auth
             return username == "admin" && password == "password";
         }
 

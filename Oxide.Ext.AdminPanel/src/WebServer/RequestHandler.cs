@@ -1,187 +1,406 @@
-﻿using Oxide.Core;
-using System;
+﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Net;
 using System.Text;
 using System.Threading.Tasks;
+using System.Net.WebSockets;
 
 namespace Oxide.Ext.AdminPanel
 {
-    public class RequestHandler
+    public sealed class RequestHandler : IDisposable
     {
+        private static readonly Type[] EmptyMiddlewareTypes = Array.Empty<Type>();
+        private sealed class RouteDefinition
+        {
+            public Type ControllerType { get; }
+            public Type[] MiddlewareTypes { get; }
+            public string MethodName { get; }
+
+            public RouteDefinition(Type controllerType, Type[] middlewareTypes, string methodName = "HandleRequest")
+            {
+                ControllerType = controllerType;
+                MiddlewareTypes = middlewareTypes;
+                MethodName = methodName;
+            }
+        }
+
         private readonly IFileSystem _fileSystem;
         private readonly ILogger _logger;
-        private readonly string _wwwrootPath;
-        private readonly string _cssPath;
-        private readonly string _jsPath;
-        private readonly string _htmlPath;
-        private readonly Dictionary<string, Func<HttpListenerContext, Task>> _routes;
         private readonly IDependencyContainer _container;
+        private readonly StaticFileHandler _staticFileHandler;
+        private readonly ConcurrentDictionary<string, RouteDefinition> _routes;
+        private bool _disposed;
 
-        public RequestHandler(IFileSystem fileSystem, ILogger logger, IDependencyContainer container, string wwwrootPath, string cssPath, string jsPath, string htmlPath)
+
+        public RequestHandler(
+            IFileSystem fileSystem,
+            ILogger logger,
+            IDependencyContainer container,
+            string wwwrootPath,
+            string cssPath,
+            string jsPath,
+            string htmlPath)
         {
             _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-            _wwwrootPath = wwwrootPath ?? throw new ArgumentNullException(nameof(wwwrootPath));
-            _cssPath = cssPath ?? throw new ArgumentNullException(nameof(cssPath));
-            _jsPath = jsPath ?? throw new ArgumentNullException(nameof(jsPath));
-            _htmlPath = htmlPath ?? throw new ArgumentNullException(nameof(htmlPath));
-            _routes = new Dictionary<string, Func<HttpListenerContext, Task>>();
             _container = container ?? throw new ArgumentNullException(nameof(container));
 
-            // registring routes
-            RegisterRoutes();
+            _staticFileHandler = new StaticFileHandler(fileSystem, wwwrootPath, cssPath, jsPath, htmlPath);
+            _routes = new ConcurrentDictionary<string, RouteDefinition>(StringComparer.OrdinalIgnoreCase);
+
+            RegisterCoreRoutes();
         }
 
-        private void RegisterRoutes()
+        private void RegisterCoreRoutes()
         {
-            // allow controllers from DI-container
-            var authController = _container.Resolve<AuthController>();
-            var mainController = _container.Resolve<MainPanelController>();
-            var apiGetPlayerCount = _container.Resolve<ApiGetPlayerCount>();
-            var apiGetPerformance = _container.Resolve<ApiGetPerformance>();
+            RegisterRoute("/adminpanel/ws", ctx =>
+            {
+                try
+                {
+                    var handler = _container.Resolve<WebSocketHandler>();
+                    return handler.HandleAsync(ctx);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError($"WebSocket handler creation failed: {ex}");
+                    throw;
+                }
+            });
 
-            _routes["/adminpanel/auth"] = context => ExecuteWithMiddleware(context, authController.HandleRequest, typeof(LoggingMiddleware));
-            _routes["/adminpanel/mainpanel"] = context => ExecuteWithMiddleware(context, mainController.HandleRequest, typeof(LoggingMiddleware), typeof(JwtAuthMiddleware));
-            _routes["/adminpanel/api/player/count"] = context => ExecuteWithMiddleware(context, apiGetPlayerCount.GetPlayerCount, typeof(LoggingMiddleware));
-            _routes["/adminpanel/api/server/performance"] = context => ExecuteWithMiddleware(context, apiGetPerformance.GetPerformance, typeof(LoggingMiddleware));
+            RegisterRoute("/adminpanel/auth",
+                typeof(AuthController),
+                new[] { typeof(LoggingMiddleware) });
+
+            RegisterRoute("/adminpanel/mainpanel",
+                typeof(MainPanelController),
+                new[] { typeof(LoggingMiddleware), typeof(JwtAuthMiddleware) });
+
+            RegisterRoute("/adminpanel/api/player/count",
+                typeof(ApiGetPlayerCount),
+                new[] { typeof(LoggingMiddleware) },
+                "GetPlayerCount");
+
+            RegisterRoute("/adminpanel/api/server/performance",
+                typeof(ApiGetPerformance),
+                new[] { typeof(LoggingMiddleware) },
+                "GetPerformance");
         }
 
-        private async Task ExecuteWithMiddleware(HttpListenerContext context, Func<HttpListenerContext, Task> handler, params Type[] middlewareTypes)
+        private void RegisterRoute(string path, Type controllerType, Type[] middlewareTypes, string methodName = "HandleRequest")
+        {
+            if (!_routes.TryAdd(path, new RouteDefinition(controllerType, middlewareTypes, methodName)))
+            {
+                throw new InvalidOperationException($"Route '{path}' is already registered");
+            }
+        }
+
+        private void RegisterRoute(string path, Func<HttpListenerContext, Task> handler)
+        {
+            // only for WebSocket
+            _routes.TryAdd(path, new RouteDefinition(typeof(object), EmptyMiddlewareTypes, "Dummy"));
+        }
+
+        public async Task ProcessRequestAsync(HttpListenerContext httpContext)
+        {
+            if (_disposed)
+            {
+                _logger.LogError("Attempted to use disposed RequestHandler");
+                throw new ObjectDisposedException(nameof(RequestHandler));
+            }
+
+            var request = httpContext.Request;
+            var response = httpContext.Response;
+            var requestPath = request.Url.AbsolutePath;
+            var requestId = Guid.NewGuid().ToString("N").Substring(0, 8); // short ID for logs
+
+            try
+            {
+                LogRequestStart(requestId, request);
+
+                var stopwatch = Stopwatch.StartNew();
+                var handled = false;
+
+                // request processing procedure
+                if (requestPath.Equals("/adminpanel/ws", StringComparison.OrdinalIgnoreCase))
+                {
+                    await HandleWebSocketRequest(httpContext);
+                    handled = true;
+                }
+                else if (await TryHandleStaticFileAsync(request, response))
+                {
+                    handled = true;
+                }
+                else if (await TryHandleRouteAsync(httpContext))
+                {
+                    handled = true;
+                }
+                else if (await TryHandleDefaultPageAsync(request, response))
+                {
+                    handled = true;
+                }
+
+                stopwatch.Stop();
+
+                if (!handled)
+                {
+                    _logger.LogWarning($"No handler found for {requestPath}");
+                    await HandleNotFoundAsync(response);
+                }
+                else
+                {
+                    _logger.LogInfo($"Request {requestId} processed in {stopwatch.ElapsedMilliseconds}ms");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Request {requestId} failed: {ex}");
+                await HandleErrorAsync(response, ex);
+            }
+            finally
+            {
+                try
+                {
+                    response.Close();
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError($"Failed to close response for {requestId}: {ex}");
+                }
+            }
+        }
+
+        private void LogRequestStart(string requestId, HttpListenerRequest request)
+        {
+            var logMessage = new StringBuilder()
+                .Append($"Request {requestId} started: ")
+                .Append($"Path={request.Url.AbsolutePath}, ")
+                .Append($"Method={request.HttpMethod}, ")
+                .Append($"UserAgent={request.UserAgent ?? "none"}, ")
+                .Append($"ClientIP={request.RemoteEndPoint?.Address.ToString() ?? "unknown"}");
+
+            _logger.LogInfo(logMessage.ToString());
+        }
+
+        private async Task HandleWebSocketRequest(HttpListenerContext context)
+        {
+            try
+            {
+                if (!context.Request.IsWebSocketRequest)
+                {
+                    _logger.LogWarning("Non-WebSocket request to WS endpoint");
+                    context.Response.StatusCode = 400;
+                    await context.Response.WriteResponseAsync("WebSocket request required", "text/plain");
+                    return;
+                }
+
+                _logger.LogInfo("Accepting WebSocket connection");
+                var wsContext = await context.AcceptWebSocketAsync(null);
+                var handler = _container.Resolve<WebSocketHandler>();
+
+                _logger.LogInfo("WebSocket handler started");
+                await handler.HandleAsync(context);
+                _logger.LogInfo("WebSocket handler completed");
+            }
+            catch (WebSocketException wsEx)
+            {
+                _logger.LogError($"WebSocket error: {wsEx.Message}");
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"WebSocket handling failed: {ex}");
+                throw;
+            }
+        }
+
+        private async Task HandleErrorAsync(HttpListenerResponse response, Exception ex)
+        {
+            try
+            {
+                response.StatusCode = 500;
+                await response.WriteResponseAsync("Internal Server Error", "text/plain");
+            }
+            catch (Exception responseEx)
+            {
+                _logger.LogError($"Failed to send error response: {responseEx}");
+            }
+        }
+
+        private async Task HandleNotFoundAsync(HttpListenerResponse response)
+        {
+            try
+            {
+                response.StatusCode = 404;
+                await response.WriteResponseAsync("Not Found", "text/plain");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Failed to send 404 response: {ex}");
+            }
+        }
+
+        private async Task<bool> TryHandleStaticFileAsync(HttpListenerRequest request, HttpListenerResponse response)
+        {
+            return await _staticFileHandler.TryHandleRequestAsync(request, response);
+        }
+
+        private async Task<bool> TryHandleRouteAsync(HttpListenerContext httpContext)
+        {
+            if (!_routes.TryGetValue(httpContext.Request.Url.AbsolutePath, out var routeDef))
+                return false;
+
+            if (routeDef.ControllerType == null) // WebSocket case
+                return false;
+
+            var controller = _container.Resolve(routeDef.ControllerType);
+            var method = routeDef.ControllerType.GetMethod(routeDef.MethodName)
+                ?? throw new InvalidOperationException($"Method {routeDef.MethodName} not found");
+
+            var handler = (Func<HttpListenerContext, Task>)Delegate.CreateDelegate(
+                typeof(Func<HttpListenerContext, Task>),
+                controller,
+                method);
+
+            await ExecuteWithMiddleware(httpContext, handler, routeDef.MiddlewareTypes);
+            return true;
+        }
+
+        private async Task<bool> TryHandleDefaultPageAsync(HttpListenerRequest request, HttpListenerResponse response)
+        {
+            if (!IsRootPath(request.Url.AbsolutePath))
+                return false;
+
+            await _staticFileHandler.ServeDefaultPageAsync(response);
+            return true;
+        }
+
+        private bool IsRootPath(string path) =>
+            path.Equals("/") || path.Equals("/adminpanel") || path.Equals("/adminpanel/");
+
+        private async Task ExecuteWithMiddleware(
+            HttpListenerContext context,
+            Func<HttpListenerContext, Task> handler,
+            Type[] middlewareTypes)
         {
             Func<Task> next = () => handler(context);
 
-            // Creating and executing middleware in reverse order
             for (int i = middlewareTypes.Length - 1; i >= 0; i--)
             {
-                var middleware = _container.Resolve(middlewareTypes[i]) as IMiddleware;
-
-                // Skipping middleware if it could not be created
-                if (middleware == null)
+                var middlewareType = middlewareTypes[i];
+                try
                 {
-                    var logger = _container.Resolve<ILogger>();
-                    logger.LogWarning($"Failed to create middleware of type {middlewareTypes[i]}");
-                    continue;
-                }
+                    var middleware = _container.Resolve(middlewareType) as IMiddleware;
+                    if (middleware == null)
+                    {
+                        _logger.LogWarning($"Middleware {middlewareType.Name} resolved as null");
+                        continue;
+                    }
 
-                var nextCopy = next;
-                next = () => middleware.InvokeAsync(context, nextCopy);
+                    var currentNext = next;
+                    next = () => middleware.InvokeAsync(context, currentNext);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError($"Failed to resolve middleware {middlewareType.Name}: {ex}");
+                    throw;
+                }
             }
 
             await next();
         }
 
-        public async Task ProcessRequestAsync(HttpListenerContext context)
+
+
+        public void Dispose()
         {
-            HttpListenerRequest request = context.Request;
-            HttpListenerResponse response = context.Response;
-
-            _logger.LogInfo($"Processing request: {request.Url.AbsolutePath}");
-
-            try
-            {
-                // static files processing
-                if (request.Url.AbsolutePath.StartsWith("/adminpanel/css/", StringComparison.OrdinalIgnoreCase) ||
-                    request.Url.AbsolutePath.StartsWith("/adminpanel/js/", StringComparison.OrdinalIgnoreCase))
-                {
-                    await ServeStaticFileAsync(request, response);
-                    return;
-                }
-
-                // routes processing
-                if (_routes.TryGetValue(request.Url.AbsolutePath, out var handler))
-                {
-                    await handler(context);
-                    return;
-                }
-
-                // html pages processing
-                if (request.Url.AbsolutePath == "/" ||
-                    request.Url.AbsolutePath == "/adminpanel" ||
-                    request.Url.AbsolutePath == "/adminpanel/")
-                {
-                    await ServeHtmlPageAsync(response);
-                    return;
-                }
-
-                // if nothing found return 404 error
-                response.StatusCode = 404;
-                await ServeContentAsync(response, Encoding.UTF8.GetBytes("Not Found"), "text/plain");
-                _logger.LogError($"Unhandled request: {request.Url.AbsolutePath}");
-            }
-            catch (Exception ex)
-            {
-                // exceptions
-                response.StatusCode = 500;
-                await ServeContentAsync(response, Encoding.UTF8.GetBytes("Internal Server Error"), "text/plain");
-                _logger.LogError($"Error processing request: {ex}");
-            }
+            if (_disposed) return;
+            _disposed = true;
+            _routes.Clear();
         }
+    }
 
-        private async Task ServeStaticFileAsync(HttpListenerRequest request, HttpListenerResponse response)
+    internal static class HttpListenerResponseExtensions
+    {
+        public static async Task WriteResponseAsync(this HttpListenerResponse response, string content, string contentType)
         {
-            _logger.LogInfo($"Serving Static File: {request.Url.AbsolutePath}");
-            string filePath = request.Url.AbsolutePath switch
+            var buffer = Encoding.UTF8.GetBytes(content);
+            response.ContentType = contentType;
+            response.ContentLength64 = buffer.Length;
+            await response.OutputStream.WriteAsync(buffer, 0, buffer.Length);
+            response.OutputStream.Close();
+        }
+    }
+
+    internal sealed class StaticFileHandler
+    {
+        private readonly IFileSystem _fileSystem;
+        private readonly string _defaultPagePath;
+        private readonly Dictionary<string, string> _staticFileMap;
+
+        public StaticFileHandler(
+            IFileSystem fileSystem,
+            string wwwrootPath,
+            string cssPath,
+            string jsPath,
+            string htmlPath)
+        {
+            _fileSystem = fileSystem;
+            _defaultPagePath = Path.Combine(htmlPath, "index.html");
+
+            _staticFileMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
-                "/adminpanel/css/styles.css" => Path.Combine(_cssPath, "styles.css"),
-                "/adminpanel/js/scripts.js" => Path.Combine(_jsPath, "scripts.js"),
-                _ => string.Empty
+                ["/adminpanel/css/styles.css"] = Path.Combine(cssPath, "styles.css"),
+                ["/adminpanel/js/scripts.js"] = Path.Combine(jsPath, "scripts.js")
             };
-
-            if (!string.IsNullOrEmpty(filePath) && await _fileSystem.FileExistsAsync(filePath))
-            {
-                _logger.LogInfo($"Serving static file: {filePath}");
-                await ServeFileAsync(response, filePath, GetContentType(filePath));
-            }
-            else
-            {
-                _logger.LogError($"File not found: {request.Url.AbsolutePath}");
-                response.StatusCode = 404;
-                await ServeContentAsync(response, Encoding.UTF8.GetBytes("File not found"), "text/plain");
-            }
         }
 
-        private async Task ServeHtmlPageAsync(HttpListenerResponse response)
+        public async Task<bool> TryHandleRequestAsync(HttpListenerRequest request, HttpListenerResponse response)
         {
-            string htmlFilePath = Path.Combine(_htmlPath, "index.html");
+            if (!_staticFileMap.TryGetValue(request.Url.AbsolutePath, out var filePath))
+                return false;
 
-            if (!await _fileSystem.FileExistsAsync(htmlFilePath))
+            if (!await _fileSystem.FileExistsAsync(filePath))
             {
-                _logger.LogError($"HTML file not found: {htmlFilePath}");
-                response.StatusCode = 404;
-                await ServeContentAsync(response, Encoding.UTF8.GetBytes("HTML file not found"), "text/plain");
+                await response.WriteResponseAsync("File not found", "text/plain");
+                return true;
+            }
+
+            await ServeFileAsync(response, filePath);
+            return true;
+        }
+
+        public async Task ServeDefaultPageAsync(HttpListenerResponse response)
+        {
+            if (!await _fileSystem.FileExistsAsync(_defaultPagePath))
+            {
+                await response.WriteResponseAsync("Default page not found", "text/plain");
                 return;
             }
 
-            _logger.LogInfo($"Serving HTML page from: {htmlFilePath}");
-            await ServeFileAsync(response, htmlFilePath, "text/html");
+            await ServeFileAsync(response, _defaultPagePath);
         }
 
-        private async Task ServeFileAsync(HttpListenerResponse response, string filePath, string contentType)
+        private async Task ServeFileAsync(HttpListenerResponse response, string filePath)
         {
-            byte[] buffer = await _fileSystem.ReadFileAsync(filePath);
-            await ServeContentAsync(response, buffer, contentType);
-        }
-
-        private async Task ServeContentAsync(HttpListenerResponse response, byte[] buffer, string contentType)
-        {
-            response.ContentLength64 = buffer.Length;
+            var content = await _fileSystem.ReadFileAsync(filePath);
+            var contentType = GetContentType(filePath);
             response.ContentType = contentType;
-
-            await response.OutputStream.WriteAsync(buffer, 0, buffer.Length);
-            await response.OutputStream.FlushAsync();
+            response.ContentLength64 = content.Length;
+            await response.OutputStream.WriteAsync(content, 0, content.Length);
             response.OutputStream.Close();
         }
 
         private string GetContentType(string filePath)
         {
-            return Path.GetExtension(filePath) switch
+            return Path.GetExtension(filePath).ToLowerInvariant() switch
             {
                 ".css" => "text/css",
                 ".js" => "application/javascript",
                 ".html" => "text/html",
-                _ => "text/plain"
+                _ => "application/octet-stream"
             };
         }
     }

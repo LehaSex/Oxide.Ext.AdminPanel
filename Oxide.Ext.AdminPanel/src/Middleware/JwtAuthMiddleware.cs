@@ -11,14 +11,14 @@ namespace Oxide.Ext.AdminPanel
     public class JwtAuthMiddleware : IMiddleware
     {
         private readonly ILogger _logger;
-        private readonly string _secretKey; // Секретный ключ для проверки токена
-        private readonly string _loginPath; // Путь к странице авторизации
+        private readonly string _secretKey; 
+        private readonly string _loginPath; 
 
         public JwtAuthMiddleware(ILogger logger, string secretKey)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _secretKey = secretKey ?? throw new ArgumentNullException(nameof(secretKey));
-            _loginPath = "/adminpanel/"; // Путь к странице авторизации
+            _loginPath = "/adminpanel/"; 
         }
 
         public async Task InvokeAsync(HttpListenerContext context, Func<Task> next)
@@ -26,24 +26,24 @@ namespace Oxide.Ext.AdminPanel
             var request = context.Request;
             var response = context.Response;
 
-            // Пропускаем проверку для страницы авторизации
+            // skip check for auth page
             if (request.Url.AbsolutePath.Equals(_loginPath, StringComparison.OrdinalIgnoreCase))
             {
                 await next();
                 return;
             }
 
-            // Проверяем наличие токена в заголовках
+            // check token in Headers
             string? token = request.Headers["Authorization"]?.Replace("Bearer ", "");
 
             if (!string.IsNullOrEmpty(token) && ValidateJwtToken(token))
             {
-                // Пользователь авторизован, продолжаем выполнение
+                // auth confirmed
                 await next();
             }
             else
             {
-                // Пользователь не авторизован, перенаправляем на страницу авторизации
+                // redirect to auth
                 response.Redirect(_loginPath);
                 response.Close();
             }
