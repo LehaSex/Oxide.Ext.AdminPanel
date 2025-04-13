@@ -127,23 +127,13 @@ namespace Oxide.Ext.AdminPanel
             }
         }
 
-        public async Task HandleAsync(HttpListenerContext context)
+        public async Task HandleAsync(HttpListenerWebSocketContext wsContext)
         {
             if (_disposed)
                 throw new ObjectDisposedException(nameof(WebSocketHandler));
 
-            if (!context.Request.IsWebSocketRequest)
-            {
-                context.Response.StatusCode = 400;
-                var error = Encoding.UTF8.GetBytes("WebSocket requests only");
-                await context.Response.OutputStream.WriteAsync(error, 0, error.Length, _cts.Token);
-                context.Response.Close();
-                return;
-            }
-
             try
             {
-                var wsContext = await context.AcceptWebSocketAsync(null);
                 var client = new WebSocketClient(wsContext.WebSocket);
 
                 if (!_connectedClients.TryAdd(client.Id, client))
@@ -159,7 +149,6 @@ namespace Oxide.Ext.AdminPanel
             catch (Exception ex)
             {
                 _logger.LogError($"WebSocket connection error: {ex}");
-                context.Response.Abort();
             }
         }
 

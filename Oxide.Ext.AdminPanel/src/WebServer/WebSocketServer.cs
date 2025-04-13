@@ -1,60 +1,106 @@
-﻿using System;
-using System.Net;
-using System.Net.WebSockets;
-using System.Text;
-using System.Threading;
+﻿using Fleck;
+using Oxide.Ext.AdminPanel;
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 
 namespace Oxide.Ext.AdminPanel
 {
-    public class WebSocketServer
+    public class WebSocketServer : IDisposable
     {
-        private readonly HttpListener _listener;
-        private int _fps = 0; // Переменная, которую будем обновлять
+        private readonly Fleck.WebSocketServer _server;
+        private readonly ConcurrentDictionary<IWebSocketConnection, Guid> _connectedClients = new();
+        private readonly ILogger _logger;
+        private readonly IReadOnlyDictionary<string, IWebSocketDataProvider> _dataProviders;
+        private readonly System.Timers.Timer _broadcastTimer;
 
-        public WebSocketServer(string uri)
+        public WebSocketServer(ILogger logger, IReadOnlyDictionary<string, IWebSocketDataProvider> dataProviders, string url)
         {
-            _listener = new HttpListener();
-            _listener.Prefixes.Add(uri);
+            _logger = logger;
+            _dataProviders = dataProviders;
+
+            _server = new Fleck.WebSocketServer(url);
+            _server.Start(socket =>
+            {
+                socket.OnOpen = () => OnOpen(socket);
+                socket.OnClose = () => OnClose(socket);
+                socket.OnMessage = message => OnMessage(socket, message);
+            });
+
+            _broadcastTimer = new System.Timers.Timer(1000);
+            _broadcastTimer.Elapsed += async (sender, e) => await BroadcastDataAsync();
+            _broadcastTimer.Start();
         }
 
-        public async Task StartAsync()
+        private void OnOpen(IWebSocketConnection socket)
         {
-            _listener.Start();
-            Console.WriteLine("WebSocket server started.");
+            _connectedClients.TryAdd(socket, Guid.NewGuid());
+            _logger.LogInfo($"WebSocket connection established. Client ID: {_connectedClients[socket]}");
+        }
 
-            while (true)
+        private void OnClose(IWebSocketConnection socket)
+        {
+            if (_connectedClients.TryRemove(socket, out _))
             {
-                var context = await _listener.GetContextAsync();
-                if (context.Request.IsWebSocketRequest)
-                {
-                    var webSocketContext = await context.AcceptWebSocketAsync(null);
-                    await HandleWebSocketAsync(webSocketContext.WebSocket);
-                }
-                else
-                {
-                    context.Response.StatusCode = 400;
-                    context.Response.Close();
-                }
+                _logger.LogInfo($"WebSocket connection closed.");
             }
         }
 
-        private async Task HandleWebSocketAsync(WebSocket webSocket)
+        private void OnMessage(IWebSocketConnection socket, string message)
         {
-            var buffer = new byte[1024];
-            while (webSocket.State == WebSocketState.Open)
+            _logger.LogInfo($"Received message from client: {message}");
+        }
+
+        private async Task BroadcastDataAsync()
+        {
+            if (_connectedClients.IsEmpty)
+                return;
+
+            try
             {
-                // Обновляем значение FPS (в реальном проекте это может быть внешний источник)
-                //_fps = ServerPerformance.lastfps;
+                var allData = new Dictionary<string, Dictionary<string, object>>();
 
-                // Отправляем значение FPS клиенту
-                string message = $"FPS: {_fps}";
-                var bytes = Encoding.UTF8.GetBytes(message);
-                //await webSocket.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, CancellationToken.None);
+                foreach (var provider in _dataProviders.Values)
+                {
+                    try
+                    {
+                        allData[provider.DataKey] = provider.GetWebSocketData();
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError($"Data provider {provider.DataKey} error: {ex}");
+                    }
+                }
 
-                // Ждем 1 секунду перед следующей отправкой
-                await Task.Delay(1000);
+                if (allData.Count == 0)
+                    return;
+
+                var jsonData = Newtonsoft.Json.JsonConvert.SerializeObject(allData);
+
+                foreach (var client in _connectedClients.Keys)
+                {
+                    try
+                    {
+                        await client.Send(jsonData);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError($"Error sending to client: {ex}");
+                        _connectedClients.TryRemove(client, out _);
+                    }
+                }
             }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Broadcast error: {ex}");
+            }
+        }
+
+        public void Dispose()
+        {
+            _server.Dispose();
+            _broadcastTimer?.Dispose();
         }
     }
 }

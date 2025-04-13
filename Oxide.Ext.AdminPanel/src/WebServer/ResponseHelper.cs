@@ -4,6 +4,7 @@ using System;
 using System.Net;
 using System.Collections.Concurrent;
 
+
 namespace Oxide.Ext.AdminPanel
 {
     public class ResponseHelper : IResponseHelper
@@ -23,9 +24,11 @@ namespace Oxide.Ext.AdminPanel
             response.ContentLength64 = buffer.Length;
             response.ContentType = contentType;
 
-            await response.OutputStream.WriteAsync(buffer, 0, buffer.Length);
-            await response.OutputStream.FlushAsync();
-            response.OutputStream.Close();
+            using (var outputStream = response.OutputStream)
+            {
+                await outputStream.WriteAsync(buffer, 0, buffer.Length);
+                await outputStream.FlushAsync();
+            }
 
             _logger.LogInfo($"Content served: {contentType}, {buffer.Length} bytes");
         }

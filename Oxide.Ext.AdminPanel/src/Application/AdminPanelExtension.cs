@@ -46,7 +46,7 @@ namespace Oxide.Ext.AdminPanel
             RegisterDependencies();
 
             RequestHandler requestHandler = _container.Resolve<RequestHandler>();
-            _webServer = new WebServer(requestHandler, _logger);
+            _webServer = new WebServer(requestHandler, _logger, _container.Resolve<WebSocketServer>());
         }
 
         private void InitializePaths()
@@ -211,6 +211,17 @@ namespace Oxide.Ext.AdminPanel
                 };
                 return new WebSocketHandler(_logger, providers);
             });
+
+            _container.Register<WebSocketServer>(() =>
+            {
+                var providers = new Dictionary<string, IWebSocketDataProvider>
+                {
+                    ["performance"] = _container.Resolve<IWebSocketDataProvider>("performance")
+                };
+                return new WebSocketServer(_logger, providers, "ws://0.0.0.0:8181");
+
+            });
+
         }
 
         private void RegisterMiddlewares()

@@ -7,6 +7,7 @@ using System.Net;
 using System.Text;
 using System.Threading.Tasks;
 using System.Net.WebSockets;
+using System.Linq;
 
 namespace Oxide.Ext.AdminPanel
 {
@@ -56,19 +57,6 @@ namespace Oxide.Ext.AdminPanel
 
         private void RegisterCoreRoutes()
         {
-            RegisterRoute("/adminpanel/ws", ctx =>
-            {
-                try
-                {
-                    var handler = _container.Resolve<WebSocketHandler>();
-                    return handler.HandleAsync(ctx);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError($"WebSocket handler creation failed: {ex}");
-                    throw;
-                }
-            });
 
             RegisterRoute("/adminpanel/auth",
                 typeof(AuthController),
@@ -124,11 +112,11 @@ namespace Oxide.Ext.AdminPanel
                 var handled = false;
 
                 // request processing procedure
-                if (requestPath.Equals("/adminpanel/ws", StringComparison.OrdinalIgnoreCase))
+                if (TryHandleOptionsRequest(httpContext))
                 {
-                    await HandleWebSocketRequest(httpContext);
                     handled = true;
                 }
+
                 else if (await TryHandleStaticFileAsync(request, response))
                 {
                     handled = true;
@@ -171,6 +159,19 @@ namespace Oxide.Ext.AdminPanel
                 }
             }
         }
+        private bool TryHandleOptionsRequest(HttpListenerContext context)
+        {
+            if (context.Request.HttpMethod == "OPTIONS")
+            {
+                context.Response.StatusCode = 200;
+                context.Response.Headers.Add("Access-Control-Allow-Origin", "*");
+                context.Response.Headers.Add("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+                context.Response.Headers.Add("Access-Control-Allow-Headers", "Content-Type, Authorization");
+                context.Response.Close();
+                return true;
+            }
+            return false;
+        }
 
         private void LogRequestStart(string requestId, HttpListenerRequest request)
         {
@@ -182,38 +183,6 @@ namespace Oxide.Ext.AdminPanel
                 .Append($"ClientIP={request.RemoteEndPoint?.Address.ToString() ?? "unknown"}");
 
             _logger.LogInfo(logMessage.ToString());
-        }
-
-        private async Task HandleWebSocketRequest(HttpListenerContext context)
-        {
-            try
-            {
-                if (!context.Request.IsWebSocketRequest)
-                {
-                    _logger.LogWarning("Non-WebSocket request to WS endpoint");
-                    context.Response.StatusCode = 400;
-                    await context.Response.WriteResponseAsync("WebSocket request required", "text/plain");
-                    return;
-                }
-
-                _logger.LogInfo("Accepting WebSocket connection");
-                var wsContext = await context.AcceptWebSocketAsync(null);
-                var handler = _container.Resolve<WebSocketHandler>();
-
-                _logger.LogInfo("WebSocket handler started");
-                await handler.HandleAsync(context);
-                _logger.LogInfo("WebSocket handler completed");
-            }
-            catch (WebSocketException wsEx)
-            {
-                _logger.LogError($"WebSocket error: {wsEx.Message}");
-                throw;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError($"WebSocket handling failed: {ex}");
-                throw;
-            }
         }
 
         private async Task HandleErrorAsync(HttpListenerResponse response, Exception ex)
@@ -252,8 +221,11 @@ namespace Oxide.Ext.AdminPanel
             if (!_routes.TryGetValue(httpContext.Request.Url.AbsolutePath, out var routeDef))
                 return false;
 
-            if (routeDef.ControllerType == null) // WebSocket case
+            if (routeDef.ControllerType == null)
+            {
+                // Handle WebSocket request or return false
                 return false;
+            }
 
             var controller = _container.Resolve(routeDef.ControllerType);
             var method = routeDef.ControllerType.GetMethod(routeDef.MethodName)
