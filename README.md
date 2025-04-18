@@ -57,3 +57,57 @@ Oxide.Ext.AdminPanel - This is an extension for Oxide that provides the function
 2. **Integration with other services**: integration of the administrative panel with other services (for example, monitoring systems, etc.)
 
 This roadmap describes the current and future tasks for the administrative panel. It will be updated as tasks are completed and new ones are added.
+
+
+## WebSocket Usage Example
+
+Here is a simple example of how to connect to the admin panel WebSocket endpoint from the browser using JavaScript:
+
+```javascript
+const socket = new WebSocket("ws://localhost:8181/ws");
+
+socket.addEventListener("open", () => {
+  console.log("Connection established");
+  socket.send("Salam!");
+});
+
+socket.addEventListener("message", (event) => {
+  console.log("Server response:", event.data);
+});
+
+socket.addEventListener("error", (event) => {
+  console.error("WebSocket error:", event);
+});
+
+socket.addEventListener("close", () => {
+  console.log("Connection closed");
+});
+```
+
+## REST API Usage Examples
+
+You can also fetch information from the AdminPanel backend using HTTP requests.
+
+### Get Server Performance Info
+```javascript
+fetch("http://localhost/adminpanel/api/server/performance")
+  .then(response => response.json())
+  .then(data => {
+    console.log("Server performance:", data);
+  })
+  .catch(error => {
+    console.error("Failed to fetch performance data:", error);
+  });
+```
+
+### Get Player Count
+```javascript
+fetch("http://localhost/adminpanel/api/player/count")
+  .then(response => response.json())
+  .then(data => {
+    console.log("Current player count:", data.count);
+  })
+  .catch(error => {
+    console.error("Failed to fetch player count:", error);
+  });
+```

@@ -11,12 +11,12 @@ namespace Oxide.Ext.AdminPanel
         private readonly HttpListener _httpListener;
         private readonly RequestHandler _requestHandler;
         private readonly ILogger _logger;
-        private WebSocketServer _webSocketServer;
+        private WSServer _webSocketServer;
         private Task? _serverTask;
         private CancellationTokenSource _cts;
         
 
-        public WebServer(RequestHandler requestHandler, ILogger logger, WebSocketServer webSocketServer)
+        public WebServer(RequestHandler requestHandler, ILogger logger, WSServer webSocketServer)
         {
             if (webSocketServer == null)
             {
