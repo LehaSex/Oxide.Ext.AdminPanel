@@ -8,8 +8,6 @@ using System.Timers;
 using WebSocketSharp;
 using WebSocketSharp.Server;
 
-#nullable disable
-
 namespace Oxide.Ext.AdminPanel
 {
     public class WSServer : IDisposable
@@ -18,7 +16,7 @@ namespace Oxide.Ext.AdminPanel
         private readonly IReadOnlyDictionary<string, IWebSocketDataProvider> _dataProviders;
         private readonly Timer _broadcastTimer;
         private readonly WebSocketSharp.Server.WebSocketServer _server;
-        private readonly ConcurrentBag<WebSocketBehavior> _connections = new();
+        private readonly ConcurrentDictionary<WebSocketBehavior, bool> _connections = new();
 
         public WSServer(ILogger logger, IReadOnlyDictionary<string, IWebSocketDataProvider> dataProviders, string url)
         {
@@ -40,21 +38,72 @@ namespace Oxide.Ext.AdminPanel
         {
             await Task.Run(() =>
             {
+                var result = new Dictionary<string, object>();
+#if DEBUG
+                _logger.LogInfo($"Total data providers: {_dataProviders.Count}");
+#endif
+
                 foreach (var provider in _dataProviders.Values)
                 {
-                    var data = provider.GetWebSocketData();
-                    var json = Newtonsoft.Json.JsonConvert.SerializeObject(data);
+                    try
+                    {
+#if DEBUG
+                        _logger.LogInfo($"Processing provider: {provider.GetType().Name}, DataKey: {provider.DataKey}");
+#endif
+                        var data = provider.GetWebSocketData();
+                        if (data != null && data.Any())
+                        {
+#if DEBUG
+                            _logger.LogInfo($"Data received from provider {provider.GetType().Name}: {Newtonsoft.Json.JsonConvert.SerializeObject(data)}");
+#endif
+                            result[provider.DataKey] = data;
+                        }
+                        else
+                        {
+#if DEBUG
+                            _logger.LogWarning($"No data received from provider {provider.GetType().Name}");
+#endif
+                        }
+                    }
+#if DEBUG
+                    catch (Exception ex)
+                    {
+                        _logger.LogError($"Error getting data from provider {provider.GetType().Name}: {ex.Message}");
+                    }
+#else
+                    catch
+                    {
+                        // do nothing
+                    }
+#endif
 
-                    foreach (var connection in _connections.ToList())
+                }
+
+                if (result.Any())
+                {
+                    var json = Newtonsoft.Json.JsonConvert.SerializeObject(result);
+
+                    foreach (var connection in _connections.Keys.ToList())
                     {
                         if (connection.Context?.WebSocket?.ReadyState == WebSocketState.Open)
                         {
+#if DEBUG
+                            _logger.LogInfo($"Broadcasting JSON: {json}");
+#endif
                             connection.Context.WebSocket.Send(json);
                         }
                     }
                 }
+                else
+                {
+#if DEBUG
+                    _logger.LogWarning("No data to broadcast.");
+#endif
+                }
             });
         }
+
+
 
         public void Dispose()
         {
@@ -75,23 +124,39 @@ namespace Oxide.Ext.AdminPanel
             {
                 if (Context != null)
                 {
+#if DEBUG
                     _owner._logger.LogInfo("Client Connected: " + Context.UserEndPoint);
-                    _owner._connections.Add(this);
+#endif
+                    _owner._connections.TryAdd(this, true);
                 }
             }
 
             protected override void OnClose(CloseEventArgs e)
             {
-                if (Context != null)
+                try
                 {
-                    _owner._logger.LogInfo("Client Disconnected: " + Context.UserEndPoint);
+                    if (Context != null && Context.UserEndPoint != null)
+                    {
+#if DEBUG
+                        _owner._logger.LogInfo("Client Disconnected: " + Context.UserEndPoint);
+#endif
+                    }
                 }
-                _owner._connections.TryTake(out _);
+                catch (ObjectDisposedException)
+                {
+                    // ignore
+                }
+                finally
+                {
+                    _owner._connections.TryRemove(this, out _);
+                }
             }
 
             protected override void OnMessage(MessageEventArgs e)
             {
+#if DEBUG
                 _owner._logger.LogInfo("Message received: " + e.Data);
+#endif
 
                 Send("Server received: " + e.Data);
             }

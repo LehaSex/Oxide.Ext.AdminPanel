@@ -8,6 +8,22 @@ Oxide.Ext.AdminPanel - This is an extension for Oxide that provides the function
 * Support for websockets for real-time information updates
 * The ability to extend functionality with the help of data providers
 
+## Why?
+
+Oxide.Ext.AdminPanel is designed as a lightweight, embedded extension running within the Oxide modding framework, which integrates tightly with Unity-based game servers like Rust. Given the nature of this environment, using ASP.NET introduces several disadvantages:
+
+1. **Self-hosted environment limitations**: Oxide plugins operate within the game server's process space. Integrating ASP.NET would require hosting a full-fledged Kestrel server, which adds unnecessary complexity and overhead for a plugin architecture.
+
+2. **Portability and independence**: The current custom HTTP/WebSocket server built on top of `HttpListener` and `Fleck` allows complete control over the lifecycle, threading model, and request routing without relying on external dependencies or web servers.
+
+3. **Lightweight and fast startup**: The goal is to keep the AdminPanel extension lightweight and optimized for minimal footprint. ASP.NET, while powerful, is relatively heavyweight for simple admin dashboard use cases like static file serving, JWT auth, and WebSocket support.
+
+4. **Custom architecture**: Implementing our own routing, middleware, DI, and WebSocket communication makes the project highly customizable and easier to debug or extend within the Oxide ecosystem, without the abstraction layers and constraints of ASP.NET middleware pipelines.
+
+5. **Better control over concurrency and threading**: Since this extension runs in a Unity context (which is single-threaded by design), precise control over async I/O and thread safety is critical — something that's much more predictable with minimal dependencies and handcrafted logic.
+
+By choosing a handcrafted approach, Oxide.Ext.AdminPanel remains fast, easy to integrate, and specifically tailored for game server environments.
+
 ## Installation
 
 1. Download and install Oxide on your server.
@@ -16,7 +32,7 @@ Oxide.Ext.AdminPanel - This is an extension for Oxide that provides the function
 
 ## Using
 
-1. Open the web interface of the administrative panel using the address `http://localhost/adminpanel /`.
+1. Open the web interface of the administrative panel using the address `http://localhost/adminpanel/`.
 2. Log in using the username and password specified in the configuration.
 3. Use the web interface to manage the server and view information.
 

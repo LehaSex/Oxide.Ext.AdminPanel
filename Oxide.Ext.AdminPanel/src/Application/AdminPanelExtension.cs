@@ -203,23 +203,17 @@ namespace Oxide.Ext.AdminPanel
             _container.Register<IWebSocketDataProvider>("performance", () =>
                 new ApiGetPerformance(_container.Resolve<Controller>()));
 
-            _container.Register<WebSocketHandler>(() =>
-            {
-                var providers = new Dictionary<string, IWebSocketDataProvider>
-                {
-                    ["performance"] = _container.Resolve<IWebSocketDataProvider>("performance")
-                };
-                return new WebSocketHandler(_logger, providers);
-            });
+            _container.Register<IWebSocketDataProvider>("players", () =>
+                new ApiGetPlayerCount(_container.Resolve<Controller>()));
 
             _container.Register<WSServer>(() =>
             {
                 var providers = new Dictionary<string, IWebSocketDataProvider>
                 {
-                    ["performance"] = _container.Resolve<IWebSocketDataProvider>("performance")
+                    ["performance"] = _container.Resolve<IWebSocketDataProvider>("performance"),
+                    ["players"] = _container.Resolve<IWebSocketDataProvider>("players")
                 };
                 return new WSServer(_logger, providers, "ws://0.0.0.0:8181");
-
             });
 
         }

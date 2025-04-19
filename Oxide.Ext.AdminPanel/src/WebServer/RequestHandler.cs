@@ -95,7 +95,9 @@ namespace Oxide.Ext.AdminPanel
         {
             if (_disposed)
             {
+#if DEBUG
                 _logger.LogError("Attempted to use disposed RequestHandler");
+#endif
                 throw new ObjectDisposedException(nameof(RequestHandler));
             }
 
@@ -106,7 +108,9 @@ namespace Oxide.Ext.AdminPanel
 
             try
             {
+#if DEBUG
                 LogRequestStart(requestId, request);
+#endif
 
                 var stopwatch = Stopwatch.StartNew();
                 var handled = false;
@@ -134,17 +138,23 @@ namespace Oxide.Ext.AdminPanel
 
                 if (!handled)
                 {
+#if DEBUG
                     _logger.LogWarning($"No handler found for {requestPath}");
+#endif
                     await HandleNotFoundAsync(response);
                 }
                 else
                 {
+#if DEBUG
                     _logger.LogInfo($"Request {requestId} processed in {stopwatch.ElapsedMilliseconds}ms");
+#endif
                 }
             }
             catch (Exception ex)
             {
+#if DEBUG
                 _logger.LogError($"Request {requestId} failed: {ex}");
+#endif
                 await HandleErrorAsync(response, ex);
             }
             finally
@@ -173,6 +183,7 @@ namespace Oxide.Ext.AdminPanel
             return false;
         }
 
+#if DEBUG
         private void LogRequestStart(string requestId, HttpListenerRequest request)
         {
             var logMessage = new StringBuilder()
@@ -184,6 +195,7 @@ namespace Oxide.Ext.AdminPanel
 
             _logger.LogInfo(logMessage.ToString());
         }
+#endif
 
         private async Task HandleErrorAsync(HttpListenerResponse response, Exception ex)
         {

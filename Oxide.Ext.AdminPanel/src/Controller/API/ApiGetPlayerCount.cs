@@ -9,6 +9,9 @@ namespace Oxide.Ext.AdminPanel
     {
         [WebSocketExpose]
         private int _playerCount;
+        [WebSocketExpose]
+        private int _sleepingPlayerCount;
+        [WebSocketExpose]
         private int _maxPlayers;
         public string DataKey => "players";
 
@@ -20,7 +23,7 @@ namespace Oxide.Ext.AdminPanel
         public async Task GetPlayerCount(HttpListenerContext context)
         {
             GetAll();
-            await SendResponse(context.Response, true, "OK", new { PlayerCount = _playerCount, MaxPlayers = _maxPlayers });
+            await SendResponse(context.Response, true, "OK", new { PlayerCount = _playerCount, MaxPlayers = _maxPlayers, SleepingPlayers = _sleepingPlayerCount });
         }
 
         private int GetPlayerCountFromServer()
@@ -32,10 +35,16 @@ namespace Oxide.Ext.AdminPanel
             return ConVar.Server.maxplayers;
         }
 
+        private int GetSleepingPlayers()
+        {
+            return BasePlayer.sleepingPlayerList.Count;
+        }
+
         private void GetAll()
         {
             _playerCount = GetPlayerCountFromServer();
             _maxPlayers = GetMaxPlayers();
+            _sleepingPlayerCount = GetSleepingPlayers();
         }
 
         public Dictionary<string, object> GetWebSocketData()
