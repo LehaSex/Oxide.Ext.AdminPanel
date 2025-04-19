@@ -226,25 +226,6 @@ namespace Oxide.Ext.AdminPanel
                 new JwtAuthMiddleware(_logger, _config.JwtSecretKey));
         }
 
-/*        private void ValidateWebSocketDependencies()
-        {
-            try
-            {
-                _logger.LogInfo("Validating WebSocket dependencies...");
-
-                var controller = _container.Resolve<Controller>();
-                var provider = _container.Resolve<IWebSocketDataProvider>("performance");
-                var handler = _container.Resolve<WebSocketHandler>();
-
-                _logger.LogInfo("WebSocket dependencies validated successfully");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError($"WebSocket dependency validation failed: {ex}");
-                throw;
-            }
-        }*/
-
         private void ValidateJwtKey()
         {
             if (string.IsNullOrWhiteSpace(_config.JwtSecretKey))
